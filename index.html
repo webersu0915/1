@@ -128,7 +128,6 @@
         .getBorrowedList();
     }
     document.getElementById("b-refresh").addEventListener("click", loadBorrowed);
-    loadBorrowed();
 
     // ===== 掃描 =====
     function onScanSuccess(decodedText) {
@@ -178,6 +177,7 @@
         });
     }
 
+    // ===== 先啟動相機，再載入清單 =====
     Html5Qrcode.getCameras().then(devices => {
       if (!devices || !devices.length) {
         resultDiv.innerText = "找不到可用的相機。";
@@ -200,6 +200,8 @@
       resultDiv.style.color = "red";
       resultDiv.innerText = "無法取得相機清單，請確認權限。";
     });
+
+    loadBorrowed();
   </script>
 </body>
 </html>
