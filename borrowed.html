@@ -15,6 +15,7 @@
     #refresh { border: 2px solid #ccc; color: #555; }
     #borrowed { background: #fff; border-radius: 8px; box-shadow: 0 1px 6px rgba(0,0,0,0.08); padding: 12px 14px; }
     #borrowed h3 { margin: 0 0 8px; font-size: 16px; }
+    #updated { color: #999; font-size: 12px; margin-bottom: 6px; }
     .b-item { padding: 10px 0; border-bottom: 1px solid #eee; font-size: 15px; }
     .b-item:last-child { border-bottom: none; }
     .b-sub { color: #777; font-size: 13px; margin-top: 2px; }
@@ -31,6 +32,7 @@
 
     <div id="borrowed">
       <h3>目前借出中：<span id="b-count">0</span> 件</h3>
+      <div id="updated"></div>
       <div id="b-list">載入中...</div>
     </div>
   </div>
@@ -47,7 +49,8 @@
           google.script.run.withSuccessHandler(resolve).withFailureHandler(reject)
             .getBorrowedList();
         } else {
-          fetch(API_URL + "?action=list")
+          // 加時間參數 + no-store，避免拿到舊資料
+          fetch(API_URL + "?action=list&t=" + Date.now(), { cache: "no-store" })
             .then(r => r.json())
             .then(d => resolve(d.list || []))
             .catch(reject);
@@ -66,12 +69,14 @@
       }
     }
 
-    function loadBorrowed() {
+    function loadBorrowed(silent) {
       const box = document.getElementById("b-list");
-      box.textContent = "載入中...";
+      if (!silent) box.textContent = "載入中...";
       apiList()
         .then(list => {
           document.getElementById("b-count").textContent = list.length;
+          document.getElementById("updated").textContent =
+            "最後更新：" + new Date().toLocaleTimeString("zh-TW", { hour12: false });
           box.innerHTML = "";
           if (!list.length) { box.textContent = "目前沒有借出中的設備 🎉"; return; }
           list.forEach(it => {
@@ -92,13 +97,15 @@
           });
         })
         .catch(err => {
-          box.textContent = "清單載入失敗：" + (err.message || err);
+          if (!silent) box.textContent = "清單載入失敗：" + (err.message || err);
         });
     }
 
-    document.getElementById("refresh").addEventListener("click", loadBorrowed);
+    document.getElementById("refresh").addEventListener("click", () => loadBorrowed(false));
     document.getElementById("back").addEventListener("click", goBack);
-    loadBorrowed();
+
+    loadBorrowed(false);
+    setInterval(() => loadBorrowed(true), 10000); // 每 10 秒自動更新
   </script>
 </body>
 </html>
