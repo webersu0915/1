@@ -8,9 +8,9 @@
   <script src="https://unpkg.com/html5-qrcode@2.3.8"></script>
   <style>
     body { font-family: sans-serif; text-align: center; padding: 16px; background: #f8f9fa; margin: 0; }
+    select { padding: 8px; font-size: 16px; border-radius: 5px; border: 1px solid #ccc; width: 100%; max-width: 300px; box-sizing: border-box; margin-bottom: 10px; }
     #reader { width: 100%; max-width: 450px; margin: 0 auto; background: #000; border-radius: 8px; overflow: hidden; }
     #result { margin-top: 20px; font-size: 18px; font-weight: bold; white-space: pre-wrap; line-height: 1.5; min-height: 60px; }
-    input, select { padding: 8px; font-size: 16px; border-radius: 5px; border: 1px solid #ccc; width: 100%; max-width: 300px; box-sizing: border-box; margin-bottom: 10px; }
     .mode-switch { display: flex; justify-content: center; gap: 10px; margin-bottom: 12px; }
     .mode-btn { flex: 1; max-width: 150px; padding: 12px 0; font-size: 18px; font-weight: bold; border: 2px solid #ccc; border-radius: 8px; background: #fff; color: #555; cursor: pointer; }
     .mode-btn.active.borrow { background: #0d6efd; border-color: #0d6efd; color: #fff; }
@@ -19,25 +19,51 @@
     #history div { padding: 4px 0; border-bottom: 1px solid #e5e5e5; }
     #go-borrowed { display: block; width: 100%; max-width: 450px; margin: 20px auto 0; padding: 14px 0; font-size: 17px; font-weight: bold; border: 2px solid #198754; border-radius: 8px; background: #fff; color: #198754; cursor: pointer; }
     #go-borrowed:active { background: #198754; color: #fff; }
+
+    /* 登入畫面 */
+    #login-view { max-width: 340px; margin: 60px auto 0; background: #fff; border-radius: 12px; box-shadow: 0 1px 8px rgba(0,0,0,0.1); padding: 28px 20px; }
+    #login-view h2 { margin-top: 0; }
+    #student-id { padding: 12px; font-size: 18px; border-radius: 8px; border: 1px solid #ccc; width: 100%; box-sizing: border-box; text-align: center; }
+    #login-btn { margin-top: 14px; width: 100%; padding: 14px 0; font-size: 18px; font-weight: bold; border: none; border-radius: 8px; background: #0d6efd; color: #fff; cursor: pointer; }
+    #login-msg { color: red; min-height: 22px; margin-top: 10px; font-size: 15px; }
+
+    /* 使用者列 */
+    #user-bar { display: flex; justify-content: space-between; align-items: center; max-width: 450px; margin: 0 auto 12px; padding: 8px 12px; background: #fff; border-radius: 8px; box-shadow: 0 1px 6px rgba(0,0,0,0.08); font-size: 16px; }
+    #logout-btn { padding: 6px 12px; font-size: 14px; border: 1px solid #ccc; border-radius: 6px; background: #fff; cursor: pointer; }
   </style>
 </head>
 <body>
-  <h2>📷 設備掃描借還系統</h2>
 
-  <div class="mode-switch">
-    <button id="btn-borrow" class="mode-btn borrow active">📤 借出</button>
-    <button id="btn-return" class="mode-btn return">📥 歸還</button>
+  <!-- ===== 登入畫面 ===== -->
+  <div id="login-view">
+    <h2>🔐 登入</h2>
+    <input id="student-id" placeholder="請輸入學號" autocomplete="off">
+    <button id="login-btn">登入</button>
+    <div id="login-msg"></div>
   </div>
 
-  <input id="borrower" placeholder="借用人（選填）">
-  <br>
-  <select id="camera-select"></select>
+  <!-- ===== 主系統 ===== -->
+  <div id="app-view" style="display:none">
+    <h2>📷 設備掃描借還系統</h2>
 
-  <div id="reader"></div>
-  <div id="result">相機啟動中，請稍候...</div>
-  <div id="history"></div>
+    <div id="user-bar">
+      <span>👤 學號：<b id="user-label"></b></span>
+      <button id="logout-btn">登出</button>
+    </div>
 
-  <button id="go-borrowed">📋 查看已借出清單</button>
+    <div class="mode-switch">
+      <button id="btn-borrow" class="mode-btn borrow active">📤 借出</button>
+      <button id="btn-return" class="mode-btn return">📥 歸還</button>
+    </div>
+
+    <select id="camera-select"></select>
+
+    <div id="reader"></div>
+    <div id="result">相機啟動中，請稍候...</div>
+    <div id="history"></div>
+
+    <button id="go-borrowed">📋 查看已借出清單</button>
+  </div>
 
   <script>
     const API_URL = "https://script.google.com/macros/s/AKfycbxYZSAEyIBOef03RRw5Eponrs1nlqvWDfNffvsArsBioxCYsneii2Glhp1z04TtwQNS/exec";
@@ -71,24 +97,63 @@
     }
 
     let currentMode = "borrow";
+    let studentId = "";
     let isProcessing = false;
+    let camerasLoaded = false;
     let lastCode = "", lastTime = 0;
 
     const html5QrCode = new Html5Qrcode("reader");
     const config = { fps: 10, qrbox: { width: 250, height: 250 } };
+
+    const loginView = document.getElementById("login-view");
+    const appView = document.getElementById("app-view");
+    const studentInput = document.getElementById("student-id");
+    const loginMsg = document.getElementById("login-msg");
+    const userLabel = document.getElementById("user-label");
     const cameraSelect = document.getElementById("camera-select");
     const resultDiv = document.getElementById("result");
     const historyDiv = document.getElementById("history");
-    const borrowerInput = document.getElementById("borrower");
     const btnBorrow = document.getElementById("btn-borrow");
     const btnReturn = document.getElementById("btn-return");
 
-    // 記住借用人（儲存失敗就略過）
-    try { borrowerInput.value = localStorage.getItem("borrower") || ""; } catch (e) {}
-    borrowerInput.addEventListener("input", () => {
-      try { localStorage.setItem("borrower", borrowerInput.value); } catch (e) {}
-    });
+    // ===== 登入 / 登出 =====
+    function login() {
+      const v = studentInput.value.trim();
+      if (!v) { loginMsg.textContent = "請輸入學號"; return; }
+      try { sessionStorage.setItem("sid", v); } catch (e) {}   // 同一個分頁內來回不用重登
+      try { localStorage.setItem("lastSid", v); } catch (e) {} // 下次登入畫面自動帶入
+      showApp(v);
+    }
 
+    function logout() {
+      try { sessionStorage.removeItem("sid"); } catch (e) {}
+      const done = () => {
+        studentId = "";
+        isProcessing = false;
+        historyDiv.innerHTML = "";
+        appView.style.display = "none";
+        loginView.style.display = "block";
+        loginMsg.textContent = "";
+        try { studentInput.value = localStorage.getItem("lastSid") || ""; } catch (e) {}
+        studentInput.focus();
+      };
+      html5QrCode.stop().then(done, done);
+    }
+
+    function showApp(id) {
+      studentId = id;
+      userLabel.textContent = id;
+      loginView.style.display = "none";
+      appView.style.display = "block";
+      setMode(currentMode);
+      startScanner();
+    }
+
+    document.getElementById("login-btn").addEventListener("click", login);
+    studentInput.addEventListener("keydown", e => { if (e.key === "Enter") login(); });
+    document.getElementById("logout-btn").addEventListener("click", logout);
+
+    // ===== 模式 =====
     function setMode(mode) {
       currentMode = mode;
       btnBorrow.classList.toggle("active", mode === "borrow");
@@ -137,7 +202,7 @@
       resultDiv.style.color = "#0056b3";
       resultDiv.innerText = `[${modeLabel}] 讀取到編號：${decodedText}\n處理中...`;
 
-      apiScan(decodedText, currentMode, borrowerInput.value)
+      apiScan(decodedText, currentMode, studentId)
         .then(data => {
           resultDiv.style.color = data.ok ? "green" : "red";
           resultDiv.innerText = data.message;
@@ -154,7 +219,7 @@
     }
 
     function release() {
-      setTimeout(() => { isProcessing = false; setMode(currentMode); }, 2500);
+      setTimeout(() => { isProcessing = false; if (studentId) setMode(currentMode); }, 2500);
     }
 
     function startCamera(cameraId) {
@@ -166,29 +231,48 @@
         });
     }
 
-    // ===== 啟動相機 =====
-    Html5Qrcode.getCameras().then(devices => {
-      if (!devices || !devices.length) {
-        resultDiv.innerText = "找不到可用的相機。";
-        return;
-      }
-      devices.forEach((d, i) => {
-        const o = document.createElement("option");
-        o.value = d.id;
-        o.text = d.label || `相機 ${i + 1}`;
-        cameraSelect.appendChild(o);
-      });
-      const back = devices.findIndex(d => /back|rear|environment|後/i.test(d.label));
-      if (back >= 0) cameraSelect.selectedIndex = back;
-      startCamera(cameraSelect.value);
+    // ===== 啟動相機（登入後才開始）=====
+    function startScanner() {
+      if (camerasLoaded) { startCamera(cameraSelect.value); return; }
 
-      cameraSelect.addEventListener("change", () => {
-        html5QrCode.stop().then(() => startCamera(cameraSelect.value));
+      Html5Qrcode.getCameras().then(devices => {
+        if (!devices || !devices.length) {
+          resultDiv.innerText = "找不到可用的相機。";
+          return;
+        }
+        devices.forEach((d, i) => {
+          const o = document.createElement("option");
+          o.value = d.id;
+          o.text = d.label || `相機 ${i + 1}`;
+          cameraSelect.appendChild(o);
+        });
+        const back = devices.findIndex(d => /back|rear|environment|後/i.test(d.label));
+        if (back >= 0) cameraSelect.selectedIndex = back;
+        camerasLoaded = true;
+        startCamera(cameraSelect.value);
+      }).catch(err => {
+        resultDiv.style.color = "red";
+        resultDiv.innerText = "無法取得相機清單，請確認權限。";
       });
-    }).catch(err => {
-      resultDiv.style.color = "red";
-      resultDiv.innerText = "無法取得相機清單，請確認權限。";
+    }
+
+    cameraSelect.addEventListener("change", () => {
+      const go = () => startCamera(cameraSelect.value);
+      html5QrCode.stop().then(go, go);
     });
+
+    // ===== 開頁：已登入（同分頁）直接進系統，否則顯示登入畫面 =====
+    (function init() {
+      let sid = "";
+      try { sid = sessionStorage.getItem("sid") || ""; } catch (e) {}
+      if (sid) {
+        showApp(sid);
+      } else {
+        try { studentInput.value = localStorage.getItem("lastSid") || ""; } catch (e) {}
+        loginView.style.display = "block";
+        studentInput.focus();
+      }
+    })();
   </script>
 </body>
 </html>
