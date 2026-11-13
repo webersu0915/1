@@ -29,7 +29,7 @@
 
     /* 使用者列 */
     #user-bar { display: flex; justify-content: space-between; align-items: center; max-width: 450px; margin: 0 auto 12px; padding: 8px 12px; background: #fff; border-radius: 8px; box-shadow: 0 1px 6px rgba(0,0,0,0.08); font-size: 16px; }
-    #logout-btn { padding: 6px 12px; font-size: 14px; border: 1px solid #ccc; border-radius: 6px; background: #fff; cursor: pointer; }
+    #logout-btn { padding: 8px 14px; font-size: 14px; border: 1px solid #ccc; border-radius: 6px; background: #fff; cursor: pointer; }
   </style>
 </head>
 <body>
@@ -80,7 +80,7 @@
           const url = API_URL + "?id=" + encodeURIComponent(id)
             + "&mode=" + encodeURIComponent(mode)
             + "&borrower=" + encodeURIComponent(borrower);
-          fetch(url).then(r => r.json()).then(resolve).catch(reject);
+          fetch(url, { cache: "no-store" }).then(r => r.json()).then(resolve).catch(reject);
         }
       });
     }
@@ -116,6 +116,18 @@
     const btnBorrow = document.getElementById("btn-borrow");
     const btnReturn = document.getElementById("btn-return");
 
+    // ===== 相機停止（出錯也不會卡住）=====
+    let stopping = Promise.resolve();
+    function stopCamera() {
+      stopping = new Promise(resolve => {
+        try {
+          const p = html5QrCode.stop();
+          if (p && p.then) p.then(resolve, resolve); else resolve();
+        } catch (e) { resolve(); }
+      });
+      return stopping;
+    }
+
     // ===== 登入 / 登出 =====
     function login() {
       const v = studentInput.value.trim();
@@ -127,17 +139,15 @@
 
     function logout() {
       try { sessionStorage.removeItem("sid"); } catch (e) {}
-      const done = () => {
-        studentId = "";
-        isProcessing = false;
-        historyDiv.innerHTML = "";
-        appView.style.display = "none";
-        loginView.style.display = "block";
-        loginMsg.textContent = "";
-        try { studentInput.value = localStorage.getItem("lastSid") || ""; } catch (e) {}
-        studentInput.focus();
-      };
-      html5QrCode.stop().then(done, done);
+      // 先切回登入畫面，再在背景停止相機
+      studentId = "";
+      isProcessing = false;
+      historyDiv.innerHTML = "";
+      appView.style.display = "none";
+      loginView.style.display = "block";
+      loginMsg.textContent = "";
+      try { studentInput.value = localStorage.getItem("lastSid") || ""; } catch (e) {}
+      stopCamera();
     }
 
     function showApp(id) {
@@ -187,6 +197,7 @@
 
     // ===== 掃描 =====
     function onScanSuccess(decodedText) {
+      if (!studentId) return;
       if (isProcessing) return;
       // 3 秒內同一個碼不重複處理
       if (decodedText === lastCode && Date.now() - lastTime < 3000) return;
@@ -223,12 +234,19 @@
     }
 
     function startCamera(cameraId) {
-      html5QrCode.start(cameraId, config, onScanSuccess)
-        .then(() => setMode(currentMode))
-        .catch(err => {
-          resultDiv.style.color = "red";
-          resultDiv.innerText = "相機啟動失敗：" + err + "\n請允許相機權限，並用手機瀏覽器直接開啟網址。";
-        });
+      stopping.then(() => {
+        try {
+          return html5QrCode.start(cameraId, config, onScanSuccess);
+        } catch (e) {
+          return Promise.reject(e);
+        }
+      }).then(() => {
+        if (!studentId) { stopCamera(); return; } // 啟動途中已登出
+        setMode(currentMode);
+      }).catch(err => {
+        resultDiv.style.color = "red";
+        resultDiv.innerText = "相機啟動失敗：" + err + "\n請允許相機權限，並用手機瀏覽器直接開啟網址。";
+      });
     }
 
     // ===== 啟動相機（登入後才開始）=====
@@ -257,8 +275,8 @@
     }
 
     cameraSelect.addEventListener("change", () => {
-      const go = () => startCamera(cameraSelect.value);
-      html5QrCode.stop().then(go, go);
+      stopCamera();
+      startCamera(cameraSelect.value);
     });
 
     // ===== 開頁：已登入（同分頁）直接進系統，否則顯示登入畫面 =====
