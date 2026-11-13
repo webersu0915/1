@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <base target="_top">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>已借出清單</title>
+  <style>
+    body { font-family: sans-serif; padding: 16px; background: #f8f9fa; margin: 0; }
+    .wrap { max-width: 450px; margin: 0 auto; }
+    h2 { text-align: center; }
+    .top-bar { display: flex; gap: 10px; margin-bottom: 14px; }
+    .top-bar button { flex: 1; padding: 12px 0; font-size: 16px; font-weight: bold; border-radius: 8px; cursor: pointer; background: #fff; }
+    #back { border: 2px solid #0d6efd; color: #0d6efd; }
+    #refresh { border: 2px solid #ccc; color: #555; }
+    #borrowed { background: #fff; border-radius: 8px; box-shadow: 0 1px 6px rgba(0,0,0,0.08); padding: 12px 14px; }
+    #borrowed h3 { margin: 0 0 8px; font-size: 16px; }
+    .b-item { padding: 10px 0; border-bottom: 1px solid #eee; font-size: 15px; }
+    .b-item:last-child { border-bottom: none; }
+    .b-sub { color: #777; font-size: 13px; margin-top: 2px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h2>📋 已借出清單</h2>
+
+    <div class="top-bar">
+      <button id="back">⬅ 返回掃描</button>
+      <button id="refresh">🔄 重新整理</button>
+    </div>
+
+    <div id="borrowed">
+      <h3>目前借出中：<span id="b-count">0</span> 件</h3>
+      <div id="b-list">載入中...</div>
+    </div>
+  </div>
+
+  <script>
+    const API_URL = "https://script.google.com/macros/s/AKfycbxYZSAEyIBOef03RRw5Eponrs1nlqvWDfNffvsArsBioxCYsneii2Glhp1z04TtwQNS/exec";
+
+    // 自動判斷：在 Apps Script 裡用 google.script.run，在 GitHub 用 fetch
+    const IN_APPSCRIPT = !!(window.google && google.script && google.script.run);
+
+    function apiList() {
+      return new Promise((resolve, reject) => {
+        if (IN_APPSCRIPT) {
+          google.script.run.withSuccessHandler(resolve).withFailureHandler(reject)
+            .getBorrowedList();
+        } else {
+          fetch(API_URL + "?action=list")
+            .then(r => r.json())
+            .then(d => resolve(d.list || []))
+            .catch(reject);
+        }
+      });
+    }
+
+    function goBack() {
+      if (IN_APPSCRIPT) {
+        google.script.run
+          .withSuccessHandler(url => { window.open(url, "_top"); })
+          .withFailureHandler(err => { alert("無法返回：" + (err.message || err)); })
+          .getAppUrl();
+      } else {
+        location.href = "index.html";
+      }
+    }
+
+    function loadBorrowed() {
+      const box = document.getElementById("b-list");
+      box.textContent = "載入中...";
+      apiList()
+        .then(list => {
+          document.getElementById("b-count").textContent = list.length;
+          box.innerHTML = "";
+          if (!list.length) { box.textContent = "目前沒有借出中的設備 🎉"; return; }
+          list.forEach(it => {
+            const d = document.createElement("div");
+            d.className = "b-item";
+            const t = document.createElement("div");
+            t.textContent = `${it.id}｜${it.title}`;
+            d.appendChild(t);
+            const sub = [it.who ? "借用人：" + it.who : "", it.time ? "借出：" + it.time : ""]
+              .filter(Boolean).join("　");
+            if (sub) {
+              const s = document.createElement("div");
+              s.className = "b-sub";
+              s.textContent = sub;
+              d.appendChild(s);
+            }
+            box.appendChild(d);
+          });
+        })
+        .catch(err => {
+          box.textContent = "清單載入失敗：" + (err.message || err);
+        });
+    }
+
+    document.getElementById("refresh").addEventListener("click", loadBorrowed);
+    document.getElementById("back").addEventListener("click", goBack);
+    loadBorrowed();
+  </script>
+</body>
+</html>
